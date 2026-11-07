@@ -1,0 +1,102 @@
+package com.gtrack.telemetry
+
+/**
+ * Instantané télémétrique diffusé par [TelemetryService].
+ * Format aligné sur l'export CSV DashWare.
+ */
+data class TelemetryData(
+    val speedKmh: Float,
+    val rpm: Int,
+    val waterTempC: Float,
+    val oilTempC: Float,
+    val turboPressureBar: Float,
+    val lateralGForce: Float,
+    val latitude: Double,
+    val longitude: Double,
+    val lapTimeMs: Long,
+    val sectorTimeMs: Long,
+    val deltaChronoMs: Long,
+    val afr: Float,
+    val ignitionAdvanceBtdc: Float,
+    val engineLoadPercent: Float,
+    val throttlePercent: Float,
+    val o2VoltageV: Float,
+    val pedalPercent: Float = 0f,
+    val steeringAngleDeg: Float = 0f,
+    val battCurrentA: Float = 0f,
+    val battSocPct: Float = 0f,
+    val battTempC: Float = 0f,
+    val battVoltV: Float = 0f,
+    val fuelLiters: Float = 0f,
+    val engineTorqueNm: Float = 0f,
+    val intakePressureMbar: Float = 0f,
+    val atmoPressureMbar: Float = 0f,
+    val brakePressureBar: Float = 0f,
+    val oilPressureBar: Float = 0f,
+    val gear: Int = 0,
+    val gearPre: Int = 0,
+    val intakeTempC: Float = 0f,
+    val catTempC: Float = 0f,
+    val extTempC: Float = 0f,
+    val egtC: Float = 0f,
+    val gearboxOilTempC: Float = 0f,
+    val tirePressureFLBar: Float = 0f,
+    val tirePressureFRBar: Float = 0f,
+    val tirePressureRLBar: Float = 0f,
+    val tirePressureRRBar: Float = 0f,
+    val tireTempFLC: Float = 0f,
+    val tireTempFRC: Float = 0f,
+    val tireTempRLC: Float = 0f,
+    val tireTempRRC: Float = 0f,
+    val tpmsFL: Float = 0f,
+    val tpmsFR: Float = 0f,
+    val tpmsRL: Float = 0f,
+    val tpmsRR: Float = 0f,
+    val sectorIndex: Int = 0,
+    val sectorDeltaPositive: Boolean? = null,
+    val timestampEpochMs: Long = System.currentTimeMillis()
+) {
+    companion object {
+        val CSV_HEADER = listOf(
+            "timestamp_ms",
+            "speed_kmh",
+            "rpm",
+            "water_temp_c",
+            "oil_temp_c",
+            "turbo_pressure_bar",
+            "lateral_g",
+            "latitude",
+            "longitude",
+            "lap_time_ms",
+            "sector_time_ms",
+            "delta_chrono_ms",
+            "afr",
+            "ignition_advance_btdc",
+            "engine_load_pct",
+            "throttle_pct",
+            "o2_voltage_v",
+            "sector_index"
+        ).joinToString(",")
+    }
+}
+
+fun TelemetryData.toCsvRow(): String = listOf(
+    timestampEpochMs,
+    speedKmh,
+    rpm,
+    waterTempC,
+    oilTempC,
+    turboPressureBar,
+    lateralGForce,
+    latitude,
+    longitude,
+    lapTimeMs,
+    sectorTimeMs,
+    deltaChronoMs,
+    afr,
+    ignitionAdvanceBtdc,
+    engineLoadPercent,
+    throttlePercent,
+    o2VoltageV,
+    sectorIndex
+).joinToString(",")
