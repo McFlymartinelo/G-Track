@@ -121,11 +121,11 @@
 
 
 
-        <!-- AAOS : pas com.google.android.gms.car.application (réservé à Android Auto téléphone) -->
+        <!-- Android Auto téléphone : déclare l'app comme application de templates. -->
 
         <meta-data
 
-            android:name="com.android.automotive"
+            android:name="com.google.android.gms.car.application"
 
             android:resource="@xml/automotive_app_desc" />
 
@@ -169,11 +169,21 @@
 
             android:name="androidx.car.app.activity.CarAppActivity"
 
-            android:exported="false"
+            android:exported="true"
+
+            android:launchMode="singleTask"
 
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
 
             android:label="@string/app_name">
+
+            <intent-filter>
+
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="androidx.car.app.category.IOT" />
+
+            </intent-filter>
 
             <meta-data
 

@@ -65,12 +65,9 @@ dependencies {
 
     // Car App Library — base obligatoire
     implementation("androidx.car.app:app:1.7.0")
-    // Émulateur Automotive OS (votre config actuelle)
-    implementation("androidx.car.app:app-automotive:1.7.0")
-    // setItemSize (grille 3 colonnes) : 1.8.0-beta01+ si besoin — pas de 1.8.0 stable sur Maven
-    // NE PAS combiner avec app-projected (provoque Manifest merger failed)
-    // Pour tester Android Auto sur téléphone, remplacez app-automotive par :
-    // implementation("androidx.car.app:app-projected:1.7.0")
+    // Android Auto sur téléphone (projected). Pour un build AAOS, remplacer par
+    // androidx.car.app:app-automotive:1.7.0 : les deux artefacts ne se combinent pas.
+    implementation("androidx.car.app:app-projected:1.7.0")
 
     implementation("com.google.android.gms:play-services-location:21.3.0")
 
