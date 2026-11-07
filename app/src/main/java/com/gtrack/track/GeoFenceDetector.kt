@@ -1,6 +1,9 @@
 package com.gtrack.track
 
+import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sqrt
 
 /**
@@ -27,31 +30,67 @@ object GeoFenceDetector {
     }
 
     /**
-     * Retourne true si la position a franchi la ligne entre la position précédente et actuelle.
+     * Retourne true si le segment [position précédente, position actuelle]
+     * coupe réellement le segment de la ligne de détection.
+     *
+     * Contrairement à un simple test de côté, on vérifie que l'intersection
+     * tombe bien entre les deux extrémités de la ligne : un passage sur le
+     * prolongement de la ligne ne déclenche pas de faux tour.
      */
     fun hasCrossedLine(previous: GeoPoint?, current: GeoPoint, line: VirtualLine): Boolean {
-        if (previous == null) {
-            return distanceToLineMeters(current, line) <= line.detectionRadiusMeters
-        }
-        val prevSide = sideOfLine(previous, line)
-        val currSide = sideOfLine(current, line)
-        if (prevSide == 0 || currSide == 0) {
-            return distanceToLineMeters(current, line) <= line.detectionRadiusMeters
-        }
-        return prevSide != currSide
+        // Sans point précédent, aucun franchissement n'est prouvable.
+        if (previous == null) return false
+        return segmentsIntersect(
+            toMeters(previous),
+            toMeters(current),
+            toMeters(line.pointA),
+            toMeters(line.pointB),
+        )
     }
 
-    private fun sideOfLine(point: GeoPoint, line: VirtualLine): Int {
-        val p = toMeters(point)
-        val a = toMeters(line.pointA)
-        val b = toMeters(line.pointB)
-        val cross = (b.first - a.first) * (p.second - a.second) - (b.second - a.second) * (p.first - a.first)
-        return when {
-            cross > 1.0 -> 1
-            cross < -1.0 -> -1
-            else -> 0
+    private fun segmentsIntersect(
+        p1: Pair<Double, Double>,
+        p2: Pair<Double, Double>,
+        p3: Pair<Double, Double>,
+        p4: Pair<Double, Double>,
+    ): Boolean {
+        val d1 = cross(p3, p4, p1)
+        val d2 = cross(p3, p4, p2)
+        val d3 = cross(p1, p2, p3)
+        val d4 = cross(p1, p2, p4)
+
+        if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+            ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))
+        ) {
+            return true
         }
+
+        // Cas particulier : intersection sur une extrémité (tolérance 1 m²).
+        val eps = 1.0
+        return (abs(d1) <= eps && onSegment(p3, p4, p1)) ||
+            (abs(d2) <= eps && onSegment(p3, p4, p2)) ||
+            (abs(d3) <= eps && onSegment(p1, p2, p3)) ||
+            (abs(d4) <= eps && onSegment(p1, p2, p4))
     }
+
+    private fun onSegment(
+        a: Pair<Double, Double>,
+        b: Pair<Double, Double>,
+        p: Pair<Double, Double>,
+    ): Boolean {
+        val eps = 1e-9
+        return p.first >= min(a.first, b.first) - eps &&
+            p.first <= max(a.first, b.first) + eps &&
+            p.second >= min(a.second, b.second) - eps &&
+            p.second <= max(a.second, b.second) + eps
+    }
+
+    private fun cross(
+        a: Pair<Double, Double>,
+        b: Pair<Double, Double>,
+        p: Pair<Double, Double>,
+    ): Double = (b.first - a.first) * (p.second - a.second) -
+        (b.second - a.second) * (p.first - a.first)
 
     private fun toMeters(point: GeoPoint): Pair<Double, Double> {
         val latRad = Math.toRadians(point.latitude)

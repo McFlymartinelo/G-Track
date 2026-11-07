@@ -94,7 +94,7 @@
     <string name="obd_data_source_live">Source : OBD live — %1$d PID(s) mis à jour ce cycle</string>
     <string name="obd_data_source_no_pid">Source : connecté mais aucun PID valide (profil « %1$s »). Essayez « Générique OBD-II » ou Renault/PSA pour une Citroën.</string>
     <string name="obd_data_source_idle">Source : en attente de session OBD</string>
-    <string name="status_telemetry">Vitesse: %.0f km/h | Tour: %d ms | Delta: %d ms</string>
+    <string name="status_telemetry">Vitesse: %1$.0f km/h | Tour: %2$d ms | Delta: %3$d ms</string>
 
     <string name="widget_speed">Vitesse</string>
     <string name="widget_rpm">Régime</string>

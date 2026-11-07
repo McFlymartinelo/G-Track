@@ -8,8 +8,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
-import android.util.Log
 import android.os.IBinder
+import android.os.Looper
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.gtrack.R
 import com.gtrack.obd.ObdConnectionState
@@ -23,9 +24,11 @@ import com.gtrack.obd.ObdSettingsStore
 import com.gtrack.obd.ObdSnapshot
 import com.gtrack.track.TrackManager
 import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
-import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,8 +40,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
 import kotlin.random.Random
 
 /**
@@ -61,8 +62,8 @@ class TelemetryService : Service() {
         private const val OBD_RECONNECT_MIN_MS = 12_000L
         private const val OBD_RECONNECT_MAX_MS = 60_000L
 
-        /** Évite d’activer/désactiver le GPS en boucle (icône qui clignote). */
-        private const val GPS_POLL_INTERVAL_MS = 1_500L
+        /** Fréquence GPS : 10 Hz, nécessaire pour un chrono à ±0,1 s. */
+        private const val GPS_UPDATE_INTERVAL_MS = 100L
 
         fun getInstance(): TelemetryService? = instance
 
@@ -122,13 +123,24 @@ class TelemetryService : Service() {
 
     val trackState = trackManager.state
 
+    private val locationCallback = object : LocationCallback() {
+        override fun onLocationResult(result: LocationResult) {
+            for (location in result.locations) {
+                lastLatitude = location.latitude
+                lastLongitude = location.longitude
+                val timeMs = if (location.time > 0) location.time else System.currentTimeMillis()
+                trackManager.onGpsUpdate(location.latitude, location.longitude, timeMs)
+            }
+        }
+    }
+
     private var acquisitionJob: Job? = null
-    private var gpsPollJob: Job? = null
+    private var locationUpdatesStarted = false
     private var useSimulation = true
     private var obdConfigured = false
     @Volatile private var scanPaused = false
-    private var lastLatitude = 0.0
-    private var lastLongitude = 0.0
+    @Volatile private var lastLatitude = 0.0
+    @Volatile private var lastLongitude = 0.0
     private var lastReconnectAttemptMs = 0L
     private var obdReconnectBackoffMs = OBD_RECONNECT_MIN_MS
 
@@ -349,7 +361,7 @@ class TelemetryService : Service() {
 
     private fun startAcquisition() {
         acquisitionJob?.cancel()
-        gpsPollJob?.cancel()
+        stopLocationUpdates()
         trackManager.resetSession()
         acquisitionJob = scope.launch {
             while (isActive) {
@@ -373,15 +385,14 @@ class TelemetryService : Service() {
             }
         }
         if (!useSimulation && hasLocationPermission()) {
-            gpsPollJob = scope.launch { pollGpsForTrackManager() }
+            startLocationUpdates()
         }
     }
 
     private fun stopAcquisition() {
         acquisitionJob?.cancel()
         acquisitionJob = null
-        gpsPollJob?.cancel()
-        gpsPollJob = null
+        stopLocationUpdates()
         stopRecording()
     }
 
@@ -390,31 +401,42 @@ class TelemetryService : Service() {
             PackageManager.PERMISSION_GRANTED
 
     /**
-     * Une requête GPS toutes les 1,5 s (pas toutes les 200 ms) pour éviter que la puce
-     * s’allume/s’éteigne en permanence. En mode démo, le GPS réel n’est pas utilisé.
+     * Abonnement GPS haute précision à 10 Hz.
+     *
+     * L'ancienne version interrogeait `getCurrentLocation` toutes les 1,5 s en
+     * précision "balanced" : à 130 km/h, deux points étaient espacés d'environ
+     * 54 m, ce qui rendait le chrono faux d'au moins ±1,5 s et faisait sauter
+     * les lignes de secteur.
      */
-    private suspend fun pollGpsForTrackManager() {
-        while (scope.coroutineContext.isActive && !useSimulation) {
-            if (!hasLocationPermission()) {
-                delay(GPS_POLL_INTERVAL_MS)
-                continue
-            }
-            try {
-                val token = CancellationTokenSource()
-                val location = fusedLocationClient.getCurrentLocation(
-                    Priority.PRIORITY_BALANCED_POWER_ACCURACY,
-                    token.token
-                ).awaitOrNull()
-                location?.let {
-                    lastLatitude = it.latitude
-                    lastLongitude = it.longitude
-                    trackManager.onGpsUpdate(it.latitude, it.longitude)
-                }
-            } catch (_: SecurityException) {
-                break
-            }
-            delay(GPS_POLL_INTERVAL_MS)
+    private fun startLocationUpdates() {
+        if (locationUpdatesStarted) return
+        val request = LocationRequest.Builder(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            GPS_UPDATE_INTERVAL_MS
+        )
+            .setMinUpdateIntervalMillis(GPS_UPDATE_INTERVAL_MS)
+            .setMinUpdateDistanceMeters(0f)
+            .build()
+        try {
+            fusedLocationClient.requestLocationUpdates(
+                request,
+                locationCallback,
+                Looper.getMainLooper()
+            )
+            locationUpdatesStarted = true
+        } catch (_: SecurityException) {
+            locationUpdatesStarted = false
         }
+    }
+
+    private fun stopLocationUpdates() {
+        if (!locationUpdatesStarted) return
+        try {
+            fusedLocationClient.removeLocationUpdates(locationCallback)
+        } catch (_: SecurityException) {
+            // Permission révoquée entre-temps : il n'y a plus rien à arrêter.
+        }
+        locationUpdatesStarted = false
     }
 
     private suspend fun prepareObdSession() {
@@ -598,12 +620,6 @@ class TelemetryService : Service() {
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setOngoing(true)
             .build()
-
-    private suspend fun <T> com.google.android.gms.tasks.Task<T>.awaitOrNull(): T? =
-        suspendCancellableCoroutine { cont ->
-            addOnSuccessListener { cont.resume(it) }
-            addOnFailureListener { cont.resume(null) }
-        }
 }
 
 private fun simulatedSample(): TelemetryData = TelemetryData(
