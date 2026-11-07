@@ -22,6 +22,9 @@ import com.gtrack.obd.ObdPidReader
 import com.gtrack.obd.ObdPresetCatalog
 import com.gtrack.obd.ObdSettingsStore
 import com.gtrack.obd.ObdSnapshot
+import com.gtrack.track.DemoCircuitDriver
+import com.gtrack.track.GeoPoint
+import com.gtrack.track.TrackGeometry
 import com.gtrack.track.TrackManager
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
@@ -135,6 +138,7 @@ class TelemetryService : Service() {
     }
 
     private var acquisitionJob: Job? = null
+    private var demoDriver: DemoCircuitDriver? = null
     private var locationUpdatesStarted = false
     private var useSimulation = true
     private var obdConfigured = false
@@ -362,7 +366,11 @@ class TelemetryService : Service() {
     private fun startAcquisition() {
         acquisitionJob?.cancel()
         stopLocationUpdates()
-        trackManager.resetSession()
+        // La démo roule sur son propre circuit virtuel ; une session réelle
+        // utilise le circuit chargé (Red Bull Ring par défaut pour l'instant).
+        val geometry = if (useSimulation) TrackGeometry.demoCircuit() else TrackGeometry.defaultSample()
+        trackManager.setGeometry(geometry)
+        demoDriver = if (useSimulation) DemoCircuitDriver(geometry.circuitOutline) else null
         acquisitionJob = scope.launch {
             while (isActive) {
                 if (scanPaused) {
@@ -532,15 +540,13 @@ class TelemetryService : Service() {
     }
 
     private fun buildSimulatedSample(): TelemetryData {
-        val track = trackManager.state.value
         val base = simulatedSample()
-        trackManager.onGpsUpdate(
-            base.latitude + Random.nextDouble(-0.00005, 0.00005),
-            base.longitude + Random.nextDouble(-0.00005, 0.00005)
-        )
+        val position = demoDriver?.step(100L) ?: GeoPoint(base.latitude, base.longitude)
+        trackManager.onGpsUpdate(position.latitude, position.longitude)
         val updatedTrack = trackManager.state.value
         val throttle = 40f + Random.nextFloat() * 60f
-        val speed = 80f + Random.nextFloat() * 120f
+        // Cohérent avec DemoCircuitDriver : 22 m/s ≈ 79 km/h.
+        val speed = 79f
         val turbo = 0.5f + Random.nextFloat() * 1.5f
         val atmo = 1008f + Random.nextFloat() * 12f
         val gear = when {
@@ -599,8 +605,8 @@ class TelemetryService : Service() {
             tpmsFR = 0f,
             tpmsRL = 0f,
             tpmsRR = 0f,
-            latitude = base.latitude + Random.nextDouble(-0.00008, 0.00008),
-            longitude = base.longitude + Random.nextDouble(-0.00008, 0.00008)
+            latitude = position.latitude,
+            longitude = position.longitude
         )
     }
 

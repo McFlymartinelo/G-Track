@@ -17,12 +17,22 @@ import kotlinx.coroutines.flow.asStateFlow
  * (S3 -> SF) n'est jamais compté et le ghost ne correspond pas au tour réel.
  */
 class TrackManager(
-    private val geometry: TrackGeometry = TrackGeometry.defaultSample()
+    initialGeometry: TrackGeometry = TrackGeometry.defaultSample()
 ) {
     companion object {
         /** Garde-fou anti-rebond GPS : un tour ne peut pas durer moins de 15 s. */
         private const val MIN_LAP_MS = 15_000L
     }
+
+    private var geometry: TrackGeometry = initialGeometry
+
+    /** Change de circuit et remet le chrono à zéro. */
+    fun setGeometry(newGeometry: TrackGeometry) {
+        geometry = newGeometry
+        resetSession()
+    }
+
+    fun currentGeometry(): TrackGeometry = geometry
 
     private val _state = MutableStateFlow(TrackState())
     val state: StateFlow<TrackState> = _state.asStateFlow()
